@@ -1,33 +1,39 @@
-import requests
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
 from bs4 import BeautifulSoup
 import json
+import time
 
-# URL of the 2082 Election Results
-url = "https://result.election.gov.np/FPTPWLChartResult2082.aspx"
-
-def scrape_election_data():
-    response = requests.get(url)
-    soup = BeautifulSoup(response.content, 'html.parser')
+def scrape_map_data():
+    options = Options()
+    options.add_argument("--headless") # Run in background
+    driver = webdriver.Chrome(options=options)
     
-    # Targeting the main result table (usually found in a gridview or table tag)
-    results = []
-    table = soup.find('table') # Refine this selector based on actual page ID
-    
-    if table:
-        rows = table.find_all('tr')[1:]  # Skip header
-        for row in rows:
-            cols = row.find_all('td')
-            if len(cols) > 1:
-                data = {
-                    "candidate": cols[1].text.strip(),
-                    "party": cols[2].text.strip(),
-                    "votes": cols[3].text.strip(),
-                    "status": cols[4].text.strip() if len(cols) > 4 else "Counting"
-                }
-                results.append(data)
-                
-    with open('election_data.json', 'w', encoding='utf-8') as f:
-        json.dump(results, f, ensure_ascii=False, indent=4)
-    print("Data scraped and saved to election_data.json")
+    url = "https://result.election.gov.np/MapElectionResult2082.aspx"
+    driver.get(url)
+    time.sleep(5) # Allow map and AJAX to load
 
-# Note: You may need Selenium if the site uses JavaScript to load the table.
+    soup = BeautifulSoup(driver.page_source, 'html.parser')
+    constituencies = []
+
+    # Target the map regions (this selector varies based on the SVG/Path structure)
+    # Usually, each district/constituency is a <path> or <a> tag
+    regions = soup.select('path[title], a[title]') 
+    
+    for area in regions:
+        data = {
+            "id": area.get('id', ''),
+            "name": area.get('title', 'Unknown'),
+            # The 'fill' or 'class' often indicates the winning party's color
+            "party_color": area.get('fill', '#cccccc') 
+        }
+        constituencies.append(data)
+
+    with open('map_results.json', 'w', encoding='utf-8') as f:
+        json.dump(constituencies, f, ensure_ascii=False, indent=4)
+    
+    driver.quit()
+    print(f"Scraped {len(constituencies)} areas.")
+
+if __name__ == "__main__":
+    scrape_map_data()
